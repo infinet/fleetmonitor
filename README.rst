@@ -40,13 +40,14 @@ A XML file contains vessels locations is generated periodically on the end
 user’s computer after receive & decrypt the gps data. Google Earth reads and
 displays the placemarks in this XML file.
 
-*format of gps data package*
-4 byte    signed integer    lon x 1,000,000
-4 byte    signed integer    lat x 1,000,000
-2 byte    signed integer    heading in degree
-4 byte    unsigned          speed in knots x 1,000
-4 byte    unsigned          time of gps reading
-4 byte    unsigned          time of message generated
+**format of gps data package**
+
+- 4 byte    signed integer    lon x 1,000,000
+- 4 byte    signed integer    lat x 1,000,000
+- 2 byte    signed integer    heading in degree
+- 4 byte    unsigned          speed in knots x 1,000
+- 4 byte    unsigned          time of gps reading
+- 4 byte    unsigned          time of message generated
 
 The total size is 22 byte, after 2 layers of encryption, the final data package
 is 132 byte long for a vessel during test. When upload every 10 minutes, the
