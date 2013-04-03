@@ -60,7 +60,7 @@ Requirement
 Fleet Monitor is written and tested on Python 2.7, there isn't much advanced
 python technique involved so it is possible to run on lower version of Python.
 
-It does require PyCrypto > 2.3 in order to import Public / Private key in ascii
+It does require PyCrypto >= 2.3 in order to import Public / Private key in ascii
 format. Fortuanately, Google AppEngine already support it.
 
 Google App Engine SDK is required to upload the software to AppEngine.
@@ -74,7 +74,7 @@ There are three parts.
 --------------
 
 The vessel should has a computer with gpsd installed and work properly.
-PyCrypto > 2.3 should be installed. Run the rsa_keygen.py to generate a pair of
+PyCrypto >= 2.3 should be installed. Run the rsa_keygen.py to generate a pair of
 public/private rsa key. Save the private key under the same directory of
 reporter.py, the public key should go to gapp directory which will upload to
 Google AppEngine.
