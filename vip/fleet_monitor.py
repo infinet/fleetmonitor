@@ -182,9 +182,9 @@ class FleetMonitor(Tiger):
         msg = '{0:20}'.format(self.vessel_name) + self.pre_master_secret
         #msg = self.vessel_name
         e_aeskeys = self.rsa_hqpub.encrypt(self.key_soup, '')[0]
-        return self.session_id + e_aeskeys + self.encrypt_aes(msg,
-                                                aeskey=self.session_key,
-                                                hmackey=self.session_hmac_key)
+        return e_aeskeys + self.encrypt_aes(msg,
+                                            aeskey=self.session_key,
+                                            hmackey=self.session_hmac_key)
 
     def get_vipkey(self, vessel_name):
         ''' post to gapp, gapp should return a aes keysoup encrypted by vip's
@@ -243,12 +243,12 @@ class FleetMonitor(Tiger):
 
         # the final payload
         payload = (obfus_key + self.encrypt_aes(msg,
-                                            aeskey=self.keysoup['s_key'],
-                                            hmackey=self.keysoup['s_hmac_key']))
+                                        aeskey=self.keysoup['s_key'],
+                                        hmackey=self.keysoup['s_hmac_key']))
         # post to gapp
         locations = []
         e_obj = open_request(self.fetch_srv, payload).read()
-
+        print
         dprint('%s receiving new gps data pack' %
               time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime()))
         dprint('total length of received gps data package is %d' % len(e_obj))
