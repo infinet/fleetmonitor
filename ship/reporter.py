@@ -168,13 +168,13 @@ class ClientHello(Tiger):
                       Tiger.SID_SIZE + Tiger.SKEY_SIZE:
                       Tiger.SID_SIZE + Tiger.SKEY_SIZE + Tiger.HMACKEY_SIZE]
 
-        # TODO: send vipkey to fetch server instead
-        vipkey_sent = open_request(self.login_srv, self.vipkey()).read()
+        vipkey_sent = open_request(self.fetch_srv, self.vipkey()).read()
         vipack = self.decrypt_aes(vipkey_sent,
                                   aeskey=self.session_key,
                                   hmackey=self.session_hmac_key)
         keysoup = None
-        if 'VIPKeyAcknowledge' in vipack:
+        if 'PVIP OKAY' in vipack:
+            print 'vip-vessel share AES key uploaded'
             self.login_okay = True
             keysoup = {'s_id': self.session_id,
                        's_key': self.session_key,
@@ -199,14 +199,13 @@ class ClientHello(Tiger):
         msg = '{0:20}'.format(self.vessel_name) + self.pre_master_secret
 
         e_aeskeys = self.rsa_hqpub.encrypt(self.key_soup, '')[0]
-        print msg
         return e_aeskeys + self.encrypt_aes(msg,
-                                                aeskey=self.session_key,
-                                                hmackey=self.session_hmac_key)
+                                            aeskey=self.session_key,
+                                            hmackey=self.session_hmac_key)
 
     def vipkey(self):
         ''' generate key soup for vip, encrypted with vip's public key, prefix
-        it with 20 byte long vessel name, then encrypt and send to gapp
+        it with 20 byte long cmd + vessel name, then encrypt and send to gapp
 
         payload:
         20 byte            the rest
@@ -219,17 +218,20 @@ class ClientHello(Tiger):
         self.vip_session_key = key_soup[:Tiger.SKEY_SIZE]
         self.vip_session_hmac_key = key_soup[Tiger.SKEY_SIZE:
                                          Tiger.SKEY_SIZE + Tiger.HMACKEY_SIZE]
+        req_id = Random.get_random_bytes(Tiger.REQID_SIZE)
 
-        payload = ('{0:20}'.format(self.vessel_name) +
+        cmd = 'PVIP'
+        msg = (req_id + '{0:20}'.format(cmd + self.vessel_name) +
                                     self.rsa_vippub.encrypt(key_soup, '')[0])
         # the keyword ChickenRib is used to identify vipkey package
         # dprint('hash of hmac key is %s' %
                               # hashlib.md5(self.session_hmac_key).hexdigest())
-
-        payload = (self.session_id + 'ChickenRib' +
-                self.encrypt_aes(payload, aeskey=self.session_key,
-                                         hmackey=self.session_hmac_key))
-        print 'vip-vessel share aes keysoup generated'
+        obfus_key = Random.get_random_bytes(self.SID_SIZE)
+        obfus_key += self.xor_obfus(self.session_id, obfus_key)
+        payload = (obfus_key + self.encrypt_aes(msg,
+                                            aeskey=self.session_key,
+                                            hmackey=self.session_hmac_key))
+        print 'vip-vessel share AES key generated'
         return payload
 
 
@@ -264,7 +266,9 @@ class Main(Tiger):
 
         # encrypt it by the aes key shared with vip, prefix with 20 byte long
         # vessel name
-        e_vip = ('{0:20}'.format(self.vessel_name) +
+        req_id = Random.get_random_bytes(Tiger.REQID_SIZE)
+        cmd = 'PGPS'
+        msg = (req_id + '{0:20}'.format(cmd + self.vessel_name) +
                    self.encrypt_aes(gps_data, aeskey=self.keysoup['vip_key'],
                                  hmackey=self.keysoup['vip_hmac_key']))
 
@@ -275,13 +279,12 @@ class Main(Tiger):
 
         # the final payload
         payload = (obfus_key +
-                   self.encrypt_aes(e_vip,
+                   self.encrypt_aes(msg,
                                     aeskey=self.keysoup['s_key'],
                                     hmackey=self.keysoup['s_hmac_key']))
         # post to gapp
         try:
             req = open_request(self.fetch_srv, payload).read()
-            print req
         except urllib2.HTTPError:
             print 'http error'
 
@@ -381,7 +384,7 @@ def main():
     newkeysoup = clt_conn.onestep_login()
     # print runtime_cfg
     # print newkeysoup
-    print '***********XXX Fleet GPS data uploader**********'
+    print '\n***********XXX Fleet GPS data uploader**********'
     print ''
     print '--------------------------------------------'
     print 'Logging into %s' % runtime_cfg['hq']['url']
