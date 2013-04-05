@@ -42,11 +42,10 @@ class Tiger:
         load_rsa_key: load a pickled rsa key object for string or file
         pretty_fingerprint: print a nice looking pub/private key fingerprint
     """
-    BLOCK_SIZE = 16
+    BLOCK_SIZE = IV_SIZE = 16
     SID_SIZE = 8
     SKEY_SIZE = 16
     HMACKEY_SIZE = 32
-    IV_SIZE = 16
     REQID_SIZE = 16
     RSAKEY_SIZE = 2048
     RSAOBJ_SIZE = RSAKEY_SIZE / 8
@@ -62,11 +61,18 @@ class Tiger:
         return ''.join(chr(ord(x) ^ ord(y)) for (x,y) in zip(msg, key))
 
     def calc_hmac(self, hmackey, msg):
-        """
-        use 32 bytes hmac key in this app, the sha1 hash function returns
-        a 20 bytes long hash,
-        msg: the message"""
-        return hmac.new(hmackey, msg, hashlib.sha1).digest()
+        '''
+        use 32 byte hmackey and sha256. In HMAC, the recommended length of hmac
+        key is at least the output length of hash function. Sha256 returns a 32
+        bytes long hash, trunct it to 20 byte.
+
+        Truncting the output "has advantages (less information on the hash
+        result available to an attacker) and disadvantages (less bits to
+        predict for the attacker)"  - RFC2104
+
+        msg: the message
+        '''
+        return hmac.new(hmackey, msg, hashlib.sha256).digest()[:20]
 
     def encrypt_aes(self, ptxt, aeskey=None, hmackey=None):
         """
