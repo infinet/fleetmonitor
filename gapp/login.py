@@ -34,13 +34,6 @@ class StoreKey(db.Model):
     date = db.DateTimeProperty(auto_now_add=True)
 
 
-class VIPKey(db.Model):
-    """the database for storing session_id and its correspond session_keys"""
-    vessel_name = db.ByteStringProperty()
-    vip_key = db.BlobProperty()
-    date = db.DateTimeProperty(auto_now_add=True)
-
-
 def dprint(msg, prefix='Debug: '):
     """print debug info on SDK console"""
     logging.info(prefix + msg)
@@ -183,41 +176,6 @@ class ServerHello(Tiger):
                                hmackey=session_hmac_key)
         return res
 
-    def vipkey(self, msg):
-        '''Received a new aes key for vip users, this key is encrypted with vip
-        user's public key, it will be stored in gapp datastore. All gps data of
-        vessel will be encrypted with this aes key before upload.
-
-        The respond has one word VIPKeyAcknowledge, which also encrypted in
-        AES.
-        '''
-        sess_id = msg[:Tiger.SID_SIZE]
-        res = get_session_key(sess_id)
-
-#         dprint('len of vip msg=%d' % len(msg))
-        # dprint('hash of session key is %s' %
-               # hashlib.md5(res['session_key']).hexdigest())
-        # dprint('hash of hmac key is %s' %
-               # hashlib.md5(res['hmac_key']).hexdigest())
-
-        # the orig data from client is like:
-        # session_id + 'ChickenRib' + encrypt_text
-        emsg = msg[Tiger.SID_SIZE + len('ChickenRib'):]
-        decrypted_text = self.decrypt_aes(emsg,
-                                          aeskey=res['session_key'],
-                                          hmackey=res['hmac_key'])
-        e_vipkeys = decrypted_text[20:]
-        vessel_name = decrypted_text[:20].strip()
-
-        vipkeystore = VIPKey(vessel_name=vessel_name, vip_key=e_vipkeys)
-        vipkeystore.put()
-        memcache.set(key=vessel_name, value=e_vipkeys, time=86400)
-
-        srv_finish_msg = 'VIPKeyAcknowledge'
-        return self.encrypt_aes(srv_finish_msg,
-                                aeskey=res['session_key'],
-                                hmackey=res['hmac_key'])
-
 
 class AESHandshake(webapp.RequestHandler, ServerHello):
     #def __init__(self):
@@ -245,10 +203,7 @@ class AESHandshake(webapp.RequestHandler, ServerHello):
         self.response.headers["Content-Type"] = "application/octet-stream"
 
         msg = self.request.body
-        if 'ChickenRib' in msg:
-            srv_resp = self.vipkey(msg)
-        else:
-            srv_resp = self.onestep(msg)
+        srv_resp = self.onestep(msg)
 
         if srv_resp:
             self.response.out.write(srv_resp)
