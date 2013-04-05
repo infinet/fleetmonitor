@@ -142,16 +142,19 @@ class FleetMonitor(Tiger):
         try:
             client_finish = open_request(self.login_srv,
                                          self.onestep()).read()
-
         except HandshakeError:
             return None
 
-        decrypted_text = self.decrypt_aes(client_finish,
+        server_finish = self.decrypt_aes(client_finish,
                                       aeskey=self.session_key,
                                       hmackey=self.session_hmac_key)
 
-        newsession_key_soup = self.rsa_priv.decrypt(decrypted_text)
+        if self.pre_master_secret != server_finish[:28]:
+            print 'Fatal Error, Pre Master Secret mismatch, handshake failed!'
+            raise HandshakeError
+            return None
 
+        newsession_key_soup = self.rsa_priv.decrypt(server_finish[28:])
         self.session_id = newsession_key_soup[:Tiger.SID_SIZE]
         self.session_key = newsession_key_soup[Tiger.SID_SIZE:
                                             Tiger.SID_SIZE + Tiger.SKEY_SIZE]
@@ -175,9 +178,10 @@ class FleetMonitor(Tiger):
         ctime = time.strftime('%H:%M:%S', time.localtime())
         print ('[{0}] Sending RSA encrypted session key to'
                ' server.....'.format(ctime))
-        msg = self.vessel_name
+        self.pre_master_secret = Random.get_random_bytes(28)
+        msg = '{0:20}'.format(self.vessel_name) + self.pre_master_secret
+        #msg = self.vessel_name
         e_aeskeys = self.rsa_hqpub.encrypt(self.key_soup, '')[0]
-        print msg
         return self.session_id + e_aeskeys + self.encrypt_aes(msg,
                                                 aeskey=self.session_key,
                                                 hmackey=self.session_hmac_key)
