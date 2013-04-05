@@ -130,7 +130,7 @@ class ClientHello(Tiger):
                                                  cfg['hq']['login_path'])
         self.vessel_name = cfg['self']['name']
         self.key_soup = Random.get_random_bytes(Tiger.RSAOBJ_SIZE - 1)
-        self.session_id = Random.get_random_bytes(Tiger.SID_SIZE)
+        self.session_id = None
         self.session_key = self.key_soup[:Tiger.SKEY_SIZE]
         #self.iv = Random.get_random_bytes(Tiger.IV_SIZE)
         self.session_hmac_key = self.key_soup[
@@ -151,10 +151,15 @@ class ClientHello(Tiger):
                                          self.onestep()).read()
         except HandshakeError:
             return None
-        decrypted_text = self.decrypt_aes(client_finish,
+        server_finish = self.decrypt_aes(client_finish,
                                       aeskey=self.session_key,
                                       hmackey=self.session_hmac_key)
-        newsession_key_soup = self.rsa_priv.decrypt(decrypted_text)
+
+        if self.pre_master_secret != server_finish[:28]:
+            print 'Fatal Error, Pre Master Secret mismatch, handshake failed!'
+            return None
+
+        newsession_key_soup = self.rsa_priv.decrypt(server_finish[28:])
 
         self.session_id = newsession_key_soup[:Tiger.SID_SIZE]
         self.session_key = newsession_key_soup[Tiger.SID_SIZE:
@@ -163,6 +168,7 @@ class ClientHello(Tiger):
                       Tiger.SID_SIZE + Tiger.SKEY_SIZE:
                       Tiger.SID_SIZE + Tiger.SKEY_SIZE + Tiger.HMACKEY_SIZE]
 
+        # TODO: send vipkey to fetch server instead
         vipkey_sent = open_request(self.login_srv, self.vipkey()).read()
         vipack = self.decrypt_aes(vipkey_sent,
                                   aeskey=self.session_key,
@@ -184,10 +190,17 @@ class ClientHello(Tiger):
         ctime = time.strftime('%H:%M:%S', time.localtime())
         print ('[{0}] Sending RSA encrypted session key to'
                ' server.....'.format(ctime))
-        msg = self.vessel_name
+
+        # add more randomness by padding the msg to 3 * 128 bit = 3 AES block,
+        # it still need another padding after zip though. It also serve to
+        # verify server's acknowledge message which should include the
+        # pre_master_secret
+        self.pre_master_secret = Random.get_random_bytes(28)
+        msg = '{0:20}'.format(self.vessel_name) + self.pre_master_secret
+
         e_aeskeys = self.rsa_hqpub.encrypt(self.key_soup, '')[0]
         print msg
-        return self.session_id + e_aeskeys + self.encrypt_aes(msg,
+        return e_aeskeys + self.encrypt_aes(msg,
                                                 aeskey=self.session_key,
                                                 hmackey=self.session_hmac_key)
 

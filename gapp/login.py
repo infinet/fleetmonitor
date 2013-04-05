@@ -141,16 +141,19 @@ class ServerHello(Tiger):
         res = None
 
         #sess_id = msg[:Tiger.SID_SIZE]
-        e_aeskeys = msg[Tiger.SID_SIZE:Tiger.SID_SIZE + Tiger.RSAOBJ_SIZE]
+        e_aeskeys = msg[:Tiger.RSAOBJ_SIZE]
         aeskeys = self.rsa_priv.decrypt(e_aeskeys)
-        self.session_key = aeskeys[:Tiger.SKEY_SIZE]
-        self.session_hmac_key = aeskeys[Tiger.SKEY_SIZE:Tiger.SKEY_SIZE +
+        session_key = aeskeys[:Tiger.SKEY_SIZE]
+        session_hmac_key = aeskeys[Tiger.SKEY_SIZE:Tiger.SKEY_SIZE +
                                                         Tiger.HMACKEY_SIZE]
 
-        vessel_name = self.decrypt_aes(msg[Tiger.SID_SIZE +
-                                           Tiger.RSAOBJ_SIZE:],
-                                      aeskey=self.session_key,
-                                      hmackey=self.session_hmac_key)
+        d_msg = self.decrypt_aes(msg[Tiger.RSAOBJ_SIZE:],
+                                 aeskey=session_key,
+                                 hmackey=session_hmac_key)
+        vessel_name = d_msg[:20].strip()
+
+        # 28 byte long pre master secret from client
+        client_pre_master_secret = d_msg[20:]
 
         # generate new aes key, store it in memcache, then encrypt by
         # client's RSA pub key, and send
@@ -172,10 +175,12 @@ class ServerHello(Tiger):
 
         #dprint('hash of new sessionkey soup before pgp is %s' %
         #        hashlib.md5(newsession_key_soup).hexdigest())
+        server_finish = (client_pre_master_secret +
+                            client_pub.encrypt(newsession_key_soup, '')[0])
 
-        res = self.encrypt_aes(client_pub.encrypt(newsession_key_soup, '')[0],
-                                aeskey=self.session_key,
-                                hmackey=self.session_hmac_key)
+        res = self.encrypt_aes(server_finish,
+                               aeskey=session_key,
+                               hmackey=session_hmac_key)
         return res
 
     def vipkey(self, msg):
