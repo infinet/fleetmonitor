@@ -196,41 +196,34 @@ class MainHandler(webapp.RequestHandler, Tiger):
             self.plain_error(521)
             return
 
-        # the gps data package
         # format of the payload
-        # 20 byte          rest
-        # -------          ----
-        # vessel name      gps datas encrypted by aes key shared with vip
+        # 4 byte    16 byte         rest
+        # ------    -----------     ----
+        # CMD       vessel name     data
         e_vip = self.decrypt_aes(c_req[Tiger.SID_SIZE * 2:],
                                 aeskey=res['session_key'],
                                 hmackey=res['hmac_key'])
-        msgheader = e_vip[:20].strip()
-        if msgheader.startswith('reqshr-'):
-            dprint('the user is retrieving shared vip-vessel aes keys')
+        req_id = e_vip[:Tiger.REQID_SIZE]
+        cmd = e_vip[Tiger.REQID_SIZE: Tiger.REQID_SIZE + 4]
+        vessel_name = e_vip[Tiger.REQID_SIZE + 4: Tiger.REQID_SIZE+20].strip()
+        data = e_vip[Tiger.REQID_SIZE + 20:]
+        if cmd == 'RVIP':  # vip request vessel-vip AES key
             # return vip aes keysoup, which is encrypted by vip public key
-            vessel_name = msgheader[7:]
-            shared_vipkey = get_shared_vipkey(vessel_name)
-            resp = self.encrypt_aes(shared_vipkey,
-                                aeskey=res['session_key'],
-                                hmackey=res['hmac_key'])
-            self.response.headers['Content-Type'] = 'application/octet-stream'
-        elif 'reqvesselgps' in msgheader:
+            dprint('the user is retrieving shared vip-vessel aes keys')
+            aes_payload = req_id + get_shared_vipkey(vessel_name)
+        elif cmd == 'RGPS':
             # vip looking for vessel's gps data pack
             content = []
-            for vessel_name in VESSELS:
-                gps_vip_pack = get_gpsdata(vessel_name)
-                content.append('{0:20}'.format(vessel_name) + gps_vip_pack)
-            payload = '\n'.join(content)
-            dprint('gpsdata payload is %d long' % len(payload))
-            resp = self.encrypt_aes(payload,
-                                aeskey=res['session_key'],
-                                hmackey=res['hmac_key'])
-            self.response.headers['Content-Type'] = 'application/octet-stream'
-        else:
+            for v_name in VESSELS:
+                gps_vip_pack = get_gpsdata(v_name)
+                content.append('{0:20}'.format(v_name) + gps_vip_pack)
+            aes_payload = req_id + '\n'.join(content)
+            dprint('gpsdata payload is %d long' % len(aes_payload))
+        elif cmd == 'PGPS':
             # received vessel's gps data pack
-            vessel_name = msgheader
+            #vessel_name = msgheader
             gps_vip_pack_id = 'gpsdata-' + vessel_name
-            gps_vip_pack = e_vip[20:]
+            gps_vip_pack = data
 
             # gapp datastore has limited free quote, try limit direct datastore
             # query. The primary storage area for gps data pack is memcache,
@@ -245,9 +238,26 @@ class MainHandler(webapp.RequestHandler, Tiger):
             memcache.set(key=gps_vip_pack_id,
                          value=gps_vip_pack, time=300)
             dprint('gps data pack received and saved to memcache')
-            resp = 'okay'
+            aes_payload = 'PGPS OKAY'
+        elif cmd == 'PVIP':
+            '''Received a new aes key for vip users, this key is encrypted with
+            vip user's public key, it will be stored in gapp datastore. All gps
+            data of vessel will be encrypted with this aes key before upload.
 
-        # forward
+            The respond has one word VIPKeyAcknowledge, which also encrypted in
+            AES.'''
+
+            e_vipkeys = data
+
+            vipkeystore = VIPKey(vessel_name=vessel_name, vip_key=e_vipkeys)
+            vipkeystore.put()
+            memcache.set(key=vessel_name, value=e_vipkeys, time=86400)
+            aes_payload = 'PVIP OKAY'
+
+        resp = self.encrypt_aes(aes_payload,
+                                aeskey=res['session_key'],
+                                hmackey=res['hmac_key'])
+        self.response.headers['Content-Type'] = 'application/octet-stream'
         self.response.out.write(resp)
 
     def get(self):
