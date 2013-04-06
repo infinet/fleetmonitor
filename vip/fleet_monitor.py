@@ -266,6 +266,9 @@ class FleetMonitor(Tiger):
         for line in content.split('\n'):
             vessel_name = line[:20].strip()
             data = line[20:]
+            if (not vessel_name) or (not data):
+                # the gps data pack is empty, vessel hasn't uploaded yet?
+                break
             tmp = self.decode_vessel_location(vessel_name, data)
             if tmp == ERROR_REFRESH_VIPKEYS:
                 break
