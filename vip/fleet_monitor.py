@@ -352,9 +352,8 @@ class FleetMonitor(Tiger):
                          '  <Point>\n'
                          '    <coordinates>%s,%s,%s</coordinates>\n'
                          '  </Point>\n'
-                         '</Placemark>\n'
-                         '</kml>') % (vessel, speed, heading, time_str,
-                                      longitude, latitude, 0)
+                         '</Placemark>') % (vessel, speed, heading, time_str,
+                                            longitude, latitude, 0)
             res.append(placemark)
         res.append(kml_footer)
         kmlfp = open(KMLFILE, 'w')
