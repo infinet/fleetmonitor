@@ -331,6 +331,13 @@ class FleetMonitor(Tiger):
 
     def kml_gen(self, vessels_data):
         ''' generate kml for google earth '''
+        res = []
+        kml_header = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+                      '<kml xmlns="http://earth.google.com/kml/2.0">\n'
+                      '<Folder>')
+        kml_footer = '</Folder>\n</kml>'
+
+        res.append(kml_header)
         for vessel, gpsdata in vessels_data:
             print 'Generating KML for %s' % vessel
             print gpsdata
@@ -339,25 +346,20 @@ class FleetMonitor(Tiger):
             longitude = gpsdata['lon']
             heading = gpsdata['heading']
             time_str = gpsdata['tgps']
-
-            output = '''<?xml version="1.0" encoding="UTF-8"?>
-        <kml xmlns="http://earth.google.com/kml/2.0">
-        <Placemark>
-            <name>%s - %s knot,heading %s %s</name>
-            <description>Realtime GPS feeding</description>
-            <LookAt>
-                <longitude>%s</longitude>
-                <latitude>%s</latitude>
-            </LookAt>
-            <Point>
-                <coordinates>%s,%s,%s</coordinates>
-            </Point>
-        </Placemark>
-        </kml>''' % (vessel, speed, heading, time_str,
-                     longitude, latitude, longitude, latitude, 0)
-            kmlfp = open(KMLFILE, 'w')
-            kmlfp.write(output)
-            kmlfp.close()
+            placemark = ('<Placemark>\n'
+                         '  <name>%s - %s knot,heading %s %s</name>\n'
+                         '  <description>Realtime GPS feeding</description>\n'
+                         '  <Point>\n'
+                         '    <coordinates>%s,%s,%s</coordinates>\n'
+                         '  </Point>\n'
+                         '</Placemark>\n'
+                         '</kml>') % (vessel, speed, heading, time_str,
+                                      longitude, latitude, 0)
+            res.append(placemark)
+        res.append(kml_footer)
+        kmlfp = open(KMLFILE, 'w')
+        kmlfp.write('\n'.join(res))
+        kmlfp.close()
 
     def run(self):
         try:
