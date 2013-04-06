@@ -21,6 +21,7 @@ import platform
 import sys
 import time
 import urllib2
+import hashlib
 
 
 KMLFILE = 'XXX_Fleet_GPS.kml'
@@ -218,14 +219,14 @@ class FleetMonitor(Tiger):
 
         self.shared_vipkeys[vessel_name] = {'s_key': vip_session_key,
                                     's_hmac_key': vip_session_hmac_key}
-        print 'shared keysoup fetched'
+        print 'new vessel-vip shared AES/HMAC keys fetched'
 
         return 1
 
     def get_vipkeys(self):
         ''' get the vip key soup from gapp'''
         for vessel in ('enterprise',):
-            print 'get shared AES key for %s' % vessel
+            print 'get vessel-vip shared AES/HMAC keys for %s' % vessel
             self.get_vipkey(vessel)
 
         return self.shared_vipkeys
@@ -262,11 +263,19 @@ class FleetMonitor(Tiger):
             return None
 
         content = d_msg[Tiger.REQID_SIZE:]
+        dprint('hash of content is \n%s' %
+                           hashlib.md5(content).hexdigest())
 
-        for line in content.split('\n'):
-            vessel_name = line[:20].strip()
-            data = line[20:]
-            if (not vessel_name) or (not data):
+        #for line in content.split('\n'):
+        while len(content) > 0:
+            (len_gps_pack, vessel_name) = unpack('<L16s', content[:20])
+            vessel_name = vessel_name.split('\x00')[0]
+            data = content[20: 20 + len_gps_pack]
+            content = content[20 + len_gps_pack:]
+            dprint(vessel_name)
+            dprint('hash of gps data pack is %s' %
+                           hashlib.md5(data).hexdigest())
+            if len_gps_pack == 0:
                 # the gps data pack is empty, vessel hasn't uploaded yet?
                 break
             tmp = self.decode_vessel_location(vessel_name, data)
@@ -285,7 +294,6 @@ class FleetMonitor(Tiger):
         dprint('decode location of %s' % vessel_name)
         shared_vipkey = self.shared_vipkeys[vessel_name]
         dprint('receiving and decoding vessel gps data pack')
-        dprint(vessel_name)
         dprint('len of encrypted gps data pack = %d' % len(e_obj))
         try:
             gpsdata = self.decrypt_aes(e_obj,

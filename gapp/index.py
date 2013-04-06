@@ -12,7 +12,7 @@ __version__ = "0.2 2013-04-03"
 
 import os
 import sys
-from struct import unpack
+from struct import pack, unpack
 import base64
 import logging
 import wsgiref.handlers
@@ -22,6 +22,7 @@ from google.appengine.api import memcache
 #from google.appengine.runtime import DeadlineExceededError
 from google.appengine.ext import webapp
 from PycryptoWrap import Tiger
+import hashlib
 
 
 scriptpath = os.path.abspath(os.path.dirname(sys.argv[0]))
@@ -244,9 +245,22 @@ class MainHandler(webapp.RequestHandler, Tiger):
             content = []
             for v_name in VESSELS:
                 gps_vip_pack = get_gpsdata(v_name)
+                len_gps_pack = len(gps_vip_pack)
+                dprint('gps data pack is %d long' % len_gps_pack)
+                dprint('hash of gps data pack is \n%s' %
+                          hashlib.md5(gps_vip_pack).hexdigest())
+
                 if gps_vip_pack:
-                    content.append('{0:20}'.format(v_name) + gps_vip_pack)
-            aes_payload = req_id + '\n'.join(content)
+                    #content.append('{0:20}'.format(v_name) + gps_vip_pack)
+                    content.append(pack('<L16s', len_gps_pack, v_name)
+                                   + gps_vip_pack)
+
+            #dprint('hash of content is \n%s' %
+            #              hashlib.md5('\n'.join(content)).hexdigest())
+            #dprint('line in content = %d' % i)
+            #dprint('line when split at newline = %d' %
+            #                   len('\n'.join(content).split('\n')))
+            aes_payload = req_id + ''.join(content)
             dprint('gpsdata payload is %d long' % len(aes_payload))
         elif cmd == 'PGPS':
             # received vessel's gps data pack

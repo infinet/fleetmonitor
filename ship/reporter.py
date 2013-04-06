@@ -291,6 +291,7 @@ class Main(Tiger):
                                     aeskey=self.keysoup['s_key'],
                                     hmackey=self.keysoup['s_hmac_key']))
         # post to gapp
+        dprint('bandwidth use: send %d bytes' % len(payload))
         try:
             req = open_request(self.fetch_srv, payload).read()
         except urllib2.HTTPError:
