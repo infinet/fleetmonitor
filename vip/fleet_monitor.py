@@ -263,8 +263,6 @@ class FleetMonitor(Tiger):
             return None
 
         content = d_msg[Tiger.REQID_SIZE:]
-        dprint('hash of content is \n%s' %
-                           hashlib.md5(content).hexdigest())
 
         #for line in content.split('\n'):
         while len(content) > 0:
@@ -272,9 +270,6 @@ class FleetMonitor(Tiger):
             vessel_name = vessel_name.split('\x00')[0]
             data = content[20: 20 + len_gps_pack]
             content = content[20 + len_gps_pack:]
-            dprint(vessel_name)
-            dprint('hash of gps data pack is %s' %
-                           hashlib.md5(data).hexdigest())
             if len_gps_pack == 0:
                 # the gps data pack is empty, vessel hasn't uploaded yet?
                 break
@@ -291,10 +286,10 @@ class FleetMonitor(Tiger):
         -------           ----
         vessel_name       vessel gps data encrypted by shared aes key
         '''
-        dprint('decode location of %s' % vessel_name)
+        dprint('received location of %s' % vessel_name)
         shared_vipkey = self.shared_vipkeys[vessel_name]
-        dprint('receiving and decoding vessel gps data pack')
-        dprint('len of encrypted gps data pack = %d' % len(e_obj))
+        dprint('decoding location of %s' % vessel_name)
+        #dprint('len of encrypted gps data pack = %d' % len(e_obj))
         try:
             gpsdata = self.decrypt_aes(e_obj,
                                     aeskey=shared_vipkey['s_key'],

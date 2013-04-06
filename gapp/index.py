@@ -91,7 +91,6 @@ def get_session_key(sess_id):
         {session_id: key, hmac_id: hmac_key}"""
     s_key_hmackey = memcache.get(sess_id)
     if not s_key_hmackey:
-        dprint('using Gql query to get session AES key')
         stored_keys = db.GqlQuery('SELECT * FROM StoreKey WHERE s_id = :1',
                                   base64.b64encode(sess_id)).get()
 
@@ -118,7 +117,6 @@ def get_shared_vipkey(vessel_name):
 
     shared_vipkey = memcache.get(vessel_name)
     if not shared_vipkey:
-        dprint('using Gql query to get shared AES key')
         req = db.GqlQuery('SELECT * '
                                     'FROM VIPKey '
                                     'WHERE vessel_name = :1 '
@@ -214,7 +212,6 @@ class MainHandler(webapp.RequestHandler, Tiger):
         obfus_key = c_req[:Tiger.SID_SIZE]
         session_id = self.xor_obfus(c_req[Tiger.SID_SIZE:Tiger.SID_SIZE * 2],
                                                                     obfus_key)
-        # lookup the client's session key from  memcache & storage
         res = get_session_key(session_id)
 
         if not res:
@@ -246,21 +243,14 @@ class MainHandler(webapp.RequestHandler, Tiger):
             for v_name in VESSELS:
                 gps_vip_pack = get_gpsdata(v_name)
                 len_gps_pack = len(gps_vip_pack)
-                dprint('gps data pack is %d long' % len_gps_pack)
-                dprint('hash of gps data pack is \n%s' %
-                          hashlib.md5(gps_vip_pack).hexdigest())
 
                 if gps_vip_pack:
                     #content.append('{0:20}'.format(v_name) + gps_vip_pack)
                     content.append(pack('<L16s', len_gps_pack, v_name)
                                    + gps_vip_pack)
 
-            #dprint('hash of content is \n%s' %
-            #              hashlib.md5('\n'.join(content)).hexdigest())
-            #dprint('line in content = %d' % i)
-            #dprint('line when split at newline = %d' %
-            #                   len('\n'.join(content).split('\n')))
             aes_payload = req_id + ''.join(content)
+            # the payload is 104 long with one vessel, gps data pack is 68
             dprint('gpsdata payload is %d long' % len(aes_payload))
         elif cmd == 'PGPS':
             # received vessel's gps data pack
@@ -279,7 +269,6 @@ class MainHandler(webapp.RequestHandler, Tiger):
             gpsdatastore.put()
             memcache.set(key=gps_vip_pack_id, value=gps_vip_pack)
             memcache.set(key='ts-%s' % vessel_name, value=timestamp)
-
 
             dprint('gps data pack received and saved to memcache')
             aes_payload = 'PGPS OKAY'

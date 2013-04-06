@@ -229,7 +229,6 @@ class ClientHello(Tiger):
         cmd = 'PVIP'
         msg = (req_id + '{0:20}'.format(cmd + self.vessel_name) +
                                     self.rsa_vippub.encrypt(key_soup, '')[0])
-        # the keyword ChickenRib is used to identify vipkey package
         # dprint('hash of hmac key is %s' %
                               # hashlib.md5(self.session_hmac_key).hexdigest())
         obfus_key = Random.get_random_bytes(self.SID_SIZE)
@@ -273,8 +272,6 @@ class Main(Tiger):
         # pack a time stamp into msg for server to detect replay attack
         time_stamp = pack('<L', int(time.time()))
         req_id = time_stamp + Random.get_random_bytes(Tiger.REQID_SIZE - 4)
-        # encrypt it by the aes key shared with vip, prefix with 20 byte long
-        # vessel name
         cmd = 'PGPS'
         msg = (req_id + '{0:20}'.format(cmd + self.vessel_name) +
                    self.encrypt_aes(gps_data, aeskey=self.keysoup['vip_key'],
@@ -291,7 +288,8 @@ class Main(Tiger):
                                     aeskey=self.keysoup['s_key'],
                                     hmackey=self.keysoup['s_hmac_key']))
         # post to gapp
-        dprint('bandwidth use: send %d bytes' % len(payload))
+        # length of payload is 180 when measure
+        #dprint('bandwidth use: send %d bytes' % len(payload))
         try:
             req = open_request(self.fetch_srv, payload).read()
         except urllib2.HTTPError:
