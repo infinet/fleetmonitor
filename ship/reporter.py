@@ -95,16 +95,19 @@ def get_config():
 
     for sec in config.sections():
         if 'self' in sec:
-            res['self']['priv'] = config.get(sec, 'priv')
+            res['self']['priv'] = os.path.join(scriptpath,
+                                               config.get(sec, 'priv'))
             res['self']['name'] = config.get(sec, 'name')
 
         elif 'hq' in sec:
             res['hq']['url'] = config.get(sec, 'url')
             res['hq']['path'] = config.get(sec, 'path')
             res['hq']['login_path'] = config.get(sec, 'login_path')
-            res['hq']['pub'] = config.get(sec, 'pub')
+            res['hq']['pub'] = os.path.join(scriptpath,
+                                            config.get(sec, 'pub'))
         elif 'vip' in sec:
-            res['vip']['pub'] = config.get(sec, 'pub')
+            res['vip']['pub'] = os.path.join(scriptpath,
+                                             config.get(sec, 'pub'))
         elif 'gpsd-server' in sec:
             res['gpsd-server']['host'] = config.get(sec, 'host')
             res['gpsd-server']['port'] = config.get(sec, 'port')
@@ -147,19 +150,14 @@ class ClientHello(Tiger):
         session_id + RSA(aes keys) + AES(client_pubkey + sig)
         """
         try:
-            client_finish = open_request(self.login_srv,
+            server_finish = open_request(self.login_srv,
                                          self.onestep()).read()
         except HandshakeError:
             return None
-        server_finish = self.decrypt_aes(client_finish,
-                                      aeskey=self.session_key,
-                                      hmackey=self.session_hmac_key)
 
-        if self.pre_master_secret != server_finish[:28]:
-            print 'Fatal Error, Pre Master Secret mismatch, handshake failed!'
-            return None
 
-        newsession_key_soup = self.rsa_priv.decrypt(server_finish[28:])
+        e_newaeskeys = server_finish[:Tiger.RSAOBJ_SIZE]
+        newsession_key_soup = self.rsa_priv.decrypt(e_newaeskeys)
 
         self.session_id = newsession_key_soup[:Tiger.SID_SIZE]
         self.session_key = newsession_key_soup[Tiger.SID_SIZE:
@@ -167,6 +165,14 @@ class ClientHello(Tiger):
         self.session_hmac_key = newsession_key_soup[
                       Tiger.SID_SIZE + Tiger.SKEY_SIZE:
                       Tiger.SID_SIZE + Tiger.SKEY_SIZE + Tiger.HMACKEY_SIZE]
+
+        pre_master_secret = self.decrypt_aes(server_finish[Tiger.RSAOBJ_SIZE:],
+                                             aeskey=self.session_key,
+                                             hmackey=self.session_hmac_key)
+
+        if self.pre_master_secret != pre_master_secret:
+            print 'Fatal Error, Pre Master Secret mismatch, handshake failed!'
+            return None
 
         vipkey_sent = open_request(self.fetch_srv, self.vipkey()).read()
         vipack = self.decrypt_aes(vipkey_sent,

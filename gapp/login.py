@@ -145,7 +145,6 @@ class ServerHello(Tiger):
                                  hmackey=session_hmac_key)
         vessel_name = d_msg[:20].strip()
 
-        # 28 byte long pre master secret from client
         client_pre_master_secret = d_msg[20:]
 
         # generate new aes key, store it in memcache, then encrypt by
@@ -166,14 +165,11 @@ class ServerHello(Tiger):
                     time=86400)  # default key expire in 24h
         client_pub = self.rsa_pubs[vessel_name]
 
-        #dprint('hash of new sessionkey soup before pgp is %s' %
-        #        hashlib.md5(newsession_key_soup).hexdigest())
-        server_finish = (client_pre_master_secret +
-                            client_pub.encrypt(newsession_key_soup, '')[0])
-
-        res = self.encrypt_aes(server_finish,
-                               aeskey=session_key,
-                               hmackey=session_hmac_key)
+        e_newaeskeys = client_pub.encrypt(newsession_key_soup, '')[0]
+        server_finish = self.encrypt_aes(client_pre_master_secret,
+                         aeskey=newsession_key_hmackey[:Tiger.SKEY_SIZE],
+                         hmackey=newsession_key_hmackey[Tiger.SKEY_SIZE:])
+        res = e_newaeskeys + server_finish
         return res
 
 

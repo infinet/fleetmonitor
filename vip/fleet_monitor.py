@@ -85,14 +85,16 @@ def get_config():
 
     for sec in config.sections():
         if 'self' in sec:
-            res['self']['priv'] = config.get(sec, 'priv')
+            res['self']['priv'] = os.path.join(scriptpath,
+                                               config.get(sec, 'priv'))
             res['self']['name'] = config.get(sec, 'name')
 
         elif 'hq' in sec:
             res['hq']['url'] = config.get(sec, 'url')
             res['hq']['path'] = config.get(sec, 'path')
             res['hq']['login_path'] = config.get(sec, 'login_path')
-            res['hq']['pub'] = config.get(sec, 'pub')
+            res['hq']['pub'] = os.path.join(scriptpath,
+                                            config.get(sec, 'pub'))
         elif 'vessel' in sec:
             res['vessels'].append(config.get(sec, 'name'))
 
@@ -140,21 +142,14 @@ class FleetMonitor(Tiger):
         session_id + RSA(aes keys) + AES(client_pubkey + sig)
         """
         try:
-            client_finish = open_request(self.login_srv,
+            server_finish = open_request(self.login_srv,
                                          self.onestep()).read()
         except HandshakeError:
             return None
 
-        server_finish = self.decrypt_aes(client_finish,
-                                      aeskey=self.session_key,
-                                      hmackey=self.session_hmac_key)
+        e_newaeskeys = server_finish[:Tiger.RSAOBJ_SIZE]
+        newsession_key_soup = self.rsa_priv.decrypt(e_newaeskeys)
 
-        if self.pre_master_secret != server_finish[:28]:
-            print 'Fatal Error, Pre Master Secret mismatch, handshake failed!'
-            raise HandshakeError
-            return None
-
-        newsession_key_soup = self.rsa_priv.decrypt(server_finish[28:])
         self.session_id = newsession_key_soup[:Tiger.SID_SIZE]
         self.session_key = newsession_key_soup[Tiger.SID_SIZE:
                                             Tiger.SID_SIZE + Tiger.SKEY_SIZE]
@@ -162,14 +157,19 @@ class FleetMonitor(Tiger):
                       Tiger.SID_SIZE + Tiger.SKEY_SIZE:
                       Tiger.SID_SIZE + Tiger.SKEY_SIZE + Tiger.HMACKEY_SIZE]
 
+        pre_master_secret = self.decrypt_aes(server_finish[Tiger.RSAOBJ_SIZE:],
+                                             aeskey=self.session_key,
+                                             hmackey=self.session_hmac_key)
+
+        if self.pre_master_secret != pre_master_secret:
+            print 'Fatal Error, Pre Master Secret mismatch, handshake failed!'
+            return None
+
         self.login_okay = True
         self.get_vipkeys()
         self.keysoup = {'s_id': self.session_id,
                         's_key': self.session_key,
                         's_hmac_key': self.session_hmac_key}
-                    #    'shared_vipkeys': self.shared_vipkeys}
-        #print keysoup
-
         return self.keysoup
 
     def onestep(self):
