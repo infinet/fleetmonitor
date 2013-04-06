@@ -270,9 +270,11 @@ class Main(Tiger):
         aes, after that, send to gapp'''
         gps_data = self.gpspackgen()
 
+        # pack a time stamp into msg for server to detect replay attack
+        time_stamp = pack('<L', int(time.time()))
+        req_id = time_stamp + Random.get_random_bytes(Tiger.REQID_SIZE - 4)
         # encrypt it by the aes key shared with vip, prefix with 20 byte long
         # vessel name
-        req_id = Random.get_random_bytes(Tiger.REQID_SIZE)
         cmd = 'PGPS'
         msg = (req_id + '{0:20}'.format(cmd + self.vessel_name) +
                    self.encrypt_aes(gps_data, aeskey=self.keysoup['vip_key'],

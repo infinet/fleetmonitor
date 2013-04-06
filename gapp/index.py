@@ -12,6 +12,7 @@ __version__ = "0.2 2013-04-03"
 
 import os
 import sys
+from struct import unpack
 import base64
 import logging
 import wsgiref.handlers
@@ -50,6 +51,7 @@ class GPSData(db.Model):
     """the database for storing gpsdata for given vessel"""
     vessel_name = db.ByteStringProperty()
     gpsdata = db.BlobProperty()
+    vessel_time_stamp = db.IntegerProperty()
     date = db.DateTimeProperty(auto_now_add=True)
 
 
@@ -140,17 +142,43 @@ def get_gpsdata(vessel_name):
     gps_vip_pack_id = 'gpsdata-' + vessel_name
     gps_vip_pack = memcache.get(gps_vip_pack_id)
     if not gps_vip_pack:
-        dprint('using Gql query to get gpsdata pack')
         res = db.GqlQuery('SELECT * '
                                     'FROM GPSData '
                                     'WHERE vessel_name = :1 '
                                     'ORDER BY date DESC LIMIT 1',
-                                    gps_vip_pack_id).get()
-        gps_vip_pack = res.gpsdata
-        if not memcache.set(key=gps_vip_pack_id, value=gps_vip_pack, time=300):
+                                    vessel_name).get()
+        if res:
+            gps_vip_pack = res.gpsdata
+        else:
+            gps_vip_pack = None
+        if not memcache.set(key=gps_vip_pack_id, value=gps_vip_pack):
             logging.error('gps data pack Memcache set failed')
 
     return gps_vip_pack
+
+
+def get_vessel_time_stamp(vessel_name):
+    '''Get the time stamp for last gps data pack vessel posted
+    Args:
+        vessel_name: the vessel name to look up
+    Return:
+        the timestamp in integer
+        '''
+    ts_id = 'ts-' + vessel_name
+    timestamp = memcache.get(ts_id)
+    if not timestamp:
+        res = db.GqlQuery('SELECT * '
+                                    'FROM GPSData '
+                                    'WHERE vessel_name = :1 '
+                                    'ORDER BY date DESC LIMIT 1',
+                                    vessel_name).get()
+        if res:
+            timestamp = res.vessel_time_stamp
+        else:
+            timestamp = 0
+        memcache.set(key=ts_id, value=timestamp)
+
+    return timestamp
 
 
 class MainHandler(webapp.RequestHandler, Tiger):
@@ -216,7 +244,8 @@ class MainHandler(webapp.RequestHandler, Tiger):
             content = []
             for v_name in VESSELS:
                 gps_vip_pack = get_gpsdata(v_name)
-                content.append('{0:20}'.format(v_name) + gps_vip_pack)
+                if gps_vip_pack:
+                    content.append('{0:20}'.format(v_name) + gps_vip_pack)
             aes_payload = req_id + '\n'.join(content)
             dprint('gpsdata payload is %d long' % len(aes_payload))
         elif cmd == 'PGPS':
@@ -224,19 +253,20 @@ class MainHandler(webapp.RequestHandler, Tiger):
             #vessel_name = msgheader
             gps_vip_pack_id = 'gpsdata-' + vessel_name
             gps_vip_pack = data
+            timestamp = unpack('<L', req_id[:4])[0]
+            if timestamp <= get_vessel_time_stamp(vessel_name):
+                dprint('Replay attack? Somebody want inject stale info')
+                # replay attack? abort here
+                return
 
-            # gapp datastore has limited free quote, try limit direct datastore
-            # query. The primary storage area for gps data pack is memcache,
-            # it will test if memcache has vessel's record already, and write
-            # to datastore if not found in memcache. The gps data pack is
-            # stored with relative short expire time in memcache.
-            testgpsdatastore = memcache.get(gps_vip_pack_id)
-            if not testgpsdatastore:
-                gpsdatastore = GPSData(vessel_name=gps_vip_pack_id,
-                                       gpsdata=gps_vip_pack)
-                gpsdatastore.put()
-            memcache.set(key=gps_vip_pack_id,
-                         value=gps_vip_pack, time=300)
+            gpsdatastore = GPSData(vessel_name=vessel_name,
+                                   vessel_time_stamp=timestamp,
+                                   gpsdata=gps_vip_pack)
+            gpsdatastore.put()
+            memcache.set(key=gps_vip_pack_id, value=gps_vip_pack)
+            memcache.set(key='ts-%s' % vessel_name, value=timestamp)
+
+
             dprint('gps data pack received and saved to memcache')
             aes_payload = 'PGPS OKAY'
         elif cmd == 'PVIP':
